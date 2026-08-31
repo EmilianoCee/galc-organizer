@@ -34,6 +34,8 @@ UC Berkeley's [Graphic Arts Loan Collection](https://www.lib.berkeley.edu/visit/
 
 ## Open risks to verify early (before deep implementation)
 
+> **All four are now resolved against the live API — see "What we learned from the real API" in [README.md](README.md).** Two answers changed the design: the `dimensions` number order turned out not to be reliably height-first (the pipeline uses image proportions to settle it), and `circulation` turned out to be empty while `meta.availability` on `/items` carries live Alma shelf status.
+
 1. Find the real production API base URL.
 2. Pull real sample data and inspect actual `dimensions` string formats (units, sheet-vs-frame size, ranges, blanks) before finalizing the parser.
 3. Pull real sample data and check what `circulation` actually contains and how often it changes.

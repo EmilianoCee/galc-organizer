@@ -1,0 +1,14 @@
+{
+  "name": "galc-organizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browse UC Berkeley's Graphic Arts Loan Collection by precise width and height.",
+  "type": "module",
+  "scripts": {
+    "fetch": "node scripts/fetch-data.mjs",
+    "fetch:full": "node scripts/fetch-data.mjs --refresh-aspects",
+    "test": "node --test \"scripts/**/*.test.mjs\"",
+    "serve": "node scripts/serve.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
