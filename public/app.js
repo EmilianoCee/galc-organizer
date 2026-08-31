@@ -1,5 +1,11 @@
 // GALC Explorer -- everything runs client-side over one prebuilt JSON snapshot.
 
+import {
+  boards, onBoardChange, createBoard, openBoard, leaveBoard, refresh as refreshBoard,
+  nominate, unnominate, vote, isNominated, scoreFor, myVote, votesFor,
+  participants, inviteUrl, getName, setName
+} from './boards.js';
+
 const DATA_URL = 'data/collection.json';
 const SAVED_KEY = 'galc-explorer:saved';
 const CHUNK = 60;
@@ -26,7 +32,8 @@ const state = {
   facets: {}, // facetName -> Set(values)
   sort: 'width-asc',
   view: 'grid',
-  matchOf: null // item id whose width we are matching
+  matchOf: null, // item id whose width we are matching
+  boardId: null
 };
 
 const bounds = { width: [0, 100], height: [0, 100] };
@@ -57,6 +64,15 @@ async function init() {
   syncControls();
   apply();
   showFreshness();
+
+  onBoardChange(() => {
+    renderBoardPanel();
+    renderBoardBar();
+    // A board view showing stale scores is worse than a brief flicker.
+    if (state.view === 'board' || state.boardId) render();
+  });
+  renderBoardPanel();
+  if (state.boardId) openBoard(state.boardId);
 }
 
 function cacheEls() {
@@ -70,6 +86,9 @@ function cacheEls() {
   els.banner = $('#match-banner');
   els.sentinel = $('#sentinel');
   els.savedCount = $('#saved-count');
+  els.boardBar = $('#board-bar');
+  els.boardPanel = $('#board-panel-body');
+  els.viewBoard = $('#view-board');
 }
 
 // ------------------------------------------------------------------ setup
@@ -286,6 +305,17 @@ function render() {
   rendered = 0;
   els.results.innerHTML = '';
   els.results.className = `results ${state.view}`;
+
+  if (state.view === 'board') {
+    els.empty.hidden = true;
+    els.count.replaceChildren(
+      el('strong', {}, String(boards.nominations.size)),
+      document.createTextNode(` nominated on “${boards.active ? boards.active.name : 'board'}”`)
+    );
+    renderBoardView();
+    return;
+  }
+
   els.empty.hidden = filtered.length > 0;
 
   const total = collection.items.length;
@@ -375,7 +405,10 @@ function cardFor(item) {
   matchBtn.disabled = item.width_in === null;
   matchBtn.addEventListener('click', () => matchWidth(item));
 
-  return el('article', { class: 'card' }, art, body, el('div', { class: 'card-actions' }, saveBtn, matchBtn));
+  const actions = el('div', { class: 'card-actions' }, saveBtn, matchBtn);
+  if (boards.active) actions.append(nominateButton(item));
+
+  return el('article', { class: 'card' }, art, body, actions);
 }
 
 function rowFor(item) {
@@ -422,6 +455,23 @@ function wallFor(item) {
   const wrap = el('div', { class: 'wall-item', title: `${item.title}${item.artist ? ' — ' + item.artist : ''}` }, frame, caption);
   wrap.addEventListener('click', () => openDetail(item));
   return wrap;
+}
+
+function nominateButton(item, className = '') {
+  const button = el('button', { class: className, type: 'button' });
+  const paint = () => {
+    const on = isNominated(item.id);
+    button.textContent = on ? 'On board' : 'Nominate';
+    button.classList.toggle('is-saved', on);
+  };
+  paint();
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    await (isNominated(item.id) ? unnominate(item.id) : nominate(item.id));
+    button.disabled = false;
+    paint();
+  });
+  return button;
 }
 
 function availabilityBadge(item) {
@@ -524,6 +574,8 @@ function openDetail(item) {
   saveBtn.addEventListener('click', () => { toggleSave(item.id); paintSave(saveBtn, item); apply(); });
   actions.append(saveBtn);
 
+  if (boards.active) actions.append(nominateButton(item, 'ghost-button'));
+
   if (item.width_in !== null) {
     const matchBtn = el('button', { class: 'ghost-button', type: 'button' }, `Find other ${fmt(item.width_in)}" widths`);
     matchBtn.addEventListener('click', () => { closeDetail(); matchWidth(item); });
@@ -582,6 +634,7 @@ function writeUrl() {
   if (state.sort !== 'width-asc') p.set('sort', state.sort);
   if (state.view !== 'grid') p.set('view', state.view);
   if (state.matchOf) p.set('match', state.matchOf);
+  if (state.boardId) p.set('board', state.boardId);
   for (const [facet, values] of Object.entries(state.facets)) {
     p.set(`f.${facet}`, [...values].join('|'));
   }
@@ -603,11 +656,15 @@ function readUrl() {
   state.sort = p.get('sort') || 'width-asc';
   state.view = p.get('view') || 'grid';
   state.matchOf = p.get('match') || null;
+  state.boardId = p.get('board') || null;
   state.facets = {};
   for (const [key, value] of p.entries()) {
     if (!key.startsWith('f.')) continue;
     state.facets[key.slice(2)] = new Set(value.split('|').filter(Boolean));
   }
+  // Checked last: the board view has nothing to show without a board id, and
+  // boardId is only known once every parameter above has been read.
+  if (state.view === 'board' && !state.boardId) state.view = 'grid';
 }
 
 function parsePair(raw) {
@@ -627,6 +684,7 @@ function syncControls() {
   for (const b of document.querySelectorAll('.segmented button')) {
     b.classList.toggle('is-active', b.dataset.view === state.view);
   }
+  els.viewBoard.hidden = !boards.active;
   for (const axis of ['width', 'height']) {
     const [lo, hi] = bounds[axis];
     const value = state[axis] || [lo, hi];
@@ -650,6 +708,210 @@ function resetAll() {
   state.matchOf = null;
   syncControls();
   apply();
+}
+
+// --------------------------------------------------------------- group board
+
+function renderBoardPanel() {
+  const body = els.boardPanel;
+  if (!body) return;
+
+  if (!boards.configured) {
+    body.replaceChildren(
+      el('p', { class: 'panel-note' },
+        'Not connected yet. Add your Supabase URL and anon key to ',
+        el('code', {}, 'public/config.js'),
+        ' to turn on shared boards.')
+    );
+    return;
+  }
+
+  if (boards.active) {
+    const people = participants();
+    const nameInput = el('input', {
+      type: 'text', placeholder: 'your name', value: getName(), maxlength: '40'
+    });
+    nameInput.addEventListener('change', () => setName(nameInput.value));
+
+    const copy = el('button', { class: 'ghost-button wide', type: 'button' }, 'Copy invite link');
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(inviteUrl());
+        copy.textContent = 'Link copied';
+        setTimeout(() => (copy.textContent = 'Copy invite link'), 1600);
+      } catch {
+        // Clipboard is blocked outside a secure context; show it to copy by hand.
+        window.prompt('Copy this link:', inviteUrl());
+      }
+    });
+
+    const addSaved = el('button', { class: 'ghost-button wide', type: 'button' },
+      `Add my ${saved.size} saved pick${saved.size === 1 ? '' : 's'}`);
+    addSaved.disabled = saved.size === 0;
+    addSaved.addEventListener('click', async () => {
+      addSaved.disabled = true;
+      for (const id of saved) await nominate(id);
+    });
+
+    const leave = el('button', { class: 'link-button', type: 'button' }, 'Leave board');
+    leave.addEventListener('click', () => {
+      state.boardId = null;
+      if (state.view === 'board') state.view = 'grid';
+      leaveBoard();
+      syncControls();
+      apply();
+    });
+
+    body.replaceChildren(
+      el('p', { class: 'board-name' }, boards.active.name),
+      el('p', { class: 'panel-note' },
+        `${boards.nominations.size} nominated` +
+        (people.length ? ` · ${people.length} ${people.length === 1 ? 'person' : 'people'} in` : '')),
+      el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Vote as'), nameInput),
+      copy,
+      addSaved,
+      leave
+    );
+    return;
+  }
+
+  const nameInput = el('input', { type: 'text', placeholder: 'name the board', maxlength: '80' });
+  const start = el('button', { class: 'ghost-button wide', type: 'button' }, 'Start a group board');
+  const go = async () => {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    start.disabled = true;
+    start.textContent = 'Creating…';
+    try {
+      const id = await createBoard(name);
+      state.boardId = id;
+      state.view = 'board';
+      syncControls();
+      apply();
+    } finally {
+      start.disabled = false;
+      start.textContent = 'Start a group board';
+    }
+  };
+  start.addEventListener('click', go);
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+
+  // replaceChildren is the raw DOM method, so a null child would become the
+  // text "null" -- filter before handing it over.
+  body.replaceChildren(
+    ...[
+      el('p', { class: 'panel-note' },
+        'Make a board, send the link to friends, and everyone nominates and votes.'),
+      nameInput,
+      start,
+      boards.error ? el('p', { class: 'panel-error' }, boards.error) : null
+    ].filter(Boolean)
+  );
+}
+
+function renderBoardBar() {
+  const bar = els.boardBar;
+  if (!bar) return;
+  if (!boards.active) { bar.hidden = true; return; }
+
+  const open = el('button', { class: 'ghost-button', type: 'button' }, 'Open board');
+  open.addEventListener('click', () => {
+    state.view = 'board';
+    syncControls();
+    apply();
+  });
+
+  bar.replaceChildren(
+    el('span', {},
+      el('strong', {}, boards.active.name),
+      ` — ${boards.nominations.size} nominated, ${totalVotes()} vote${totalVotes() === 1 ? '' : 's'} cast`),
+    el('span', { class: 'board-bar-actions' },
+      boards.error ? el('span', { class: 'panel-error' }, 'Sync problem — retrying') : null,
+      open)
+  );
+  bar.hidden = false;
+  els.viewBoard.hidden = false;
+}
+
+function totalVotes() {
+  let n = 0;
+  for (const list of boards.votes.values()) n += list.length;
+  return n;
+}
+
+/** Nominated prints, ranked by score, with the voting controls. */
+function renderBoardView() {
+  const ids = [...boards.nominations.keys()];
+  const byId = new Map(collection.items.map((i) => [i.id, i]));
+  const entries = ids
+    .map((id) => ({ id, item: byId.get(id), score: scoreFor(id) }))
+    .filter((e) => e.item);
+  entries.sort((a, b) =>
+    b.score - a.score || votesFor(b.id).length - votesFor(a.id).length || a.item.title.localeCompare(b.item.title)
+  );
+
+  els.results.replaceChildren();
+  if (!entries.length) {
+    els.results.append(
+      el('p', { class: 'empty' },
+        'Nothing nominated yet. Browse in Grid or Table and hit “Nominate” on anything you like.')
+    );
+    return;
+  }
+
+  const top = entries[0].score;
+  for (const [rank, entry] of entries.entries()) {
+    // A leader only counts as a favourite once somebody has actually voted.
+    const leading = top > 0 && entry.score === top;
+    els.results.append(boardRow(entry, rank + 1, leading));
+  }
+}
+
+function boardRow(entry, rank, leading) {
+  const { id, item, score } = entry;
+  const mine = myVote(id);
+
+  const art = el('button', { class: 'board-thumb', type: 'button', title: 'View details' });
+  if (item.thumbnail_url) {
+    art.append(el('img', { src: item.thumbnail_url, alt: item.title, loading: 'lazy' }));
+  }
+  art.addEventListener('click', () => openDetail(item));
+
+  const up = el('button', { class: `vote-button${mine === 1 ? ' is-on' : ''}`, type: 'button', title: 'Yes' }, '▲');
+  up.addEventListener('click', () => vote(id, mine === 1 ? 0 : 1));
+  const down = el('button', { class: `vote-button${mine === -1 ? ' is-on' : ''}`, type: 'button', title: 'No' }, '▼');
+  down.addEventListener('click', () => vote(id, mine === -1 ? 0 : -1));
+
+  const voters = votesFor(id);
+  const yes = voters.filter((v) => v.value === 1).map((v) => v.voter_name);
+  const no = voters.filter((v) => v.value === -1).map((v) => v.voter_name);
+
+  const remove = el('button', { class: 'link-button', type: 'button' }, 'Remove');
+  remove.addEventListener('click', () => unnominate(id));
+
+  const meta = el('div', { class: 'board-meta' },
+    el('h3', { class: 'card-title' }, item.title),
+    el('p', { class: 'card-artist' }, item.artist || 'Unknown artist'),
+    el('p', { class: 'board-dims' },
+      item.width_in !== null
+        ? `${fmt(item.width_in)}" w × ${fmt(item.height_in)}" h`
+        : item.dimensions_raw || 'size unknown'),
+    el('p', { class: 'panel-note' },
+      `Added by ${boards.nominations.get(id)?.added_by || 'someone'}` +
+      (yes.length ? ` · yes: ${yes.join(', ')}` : '') +
+      (no.length ? ` · no: ${no.join(', ')}` : ''))
+  );
+
+  return el('article', { class: `board-row${leading ? ' is-leading' : ''}` },
+    el('div', { class: 'board-rank' }, leading ? '★' : String(rank)),
+    art,
+    meta,
+    el('div', { class: 'board-score' },
+      up,
+      el('span', { class: 'score-value' }, score > 0 ? `+${score}` : String(score)),
+      down,
+      remove)
+  );
 }
 
 function showFreshness() {

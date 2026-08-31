@@ -42,6 +42,36 @@ Two consequences. It is *more* authoritative than the spec assumed — but our s
 
 **4. No documented rate limit, so the pipeline is deliberately slow**: 400ms between item pages, 120ms between images, retries with backoff, once a day via GitHub Actions rather than per visitor.
 
+## Group boards
+
+A board is a shared shortlist several people nominate to and vote on. One person starts a board, sends the link, and everyone adds prints and votes yes or no; the board view ranks by score and stars the leader. Votes are one per person per print, and re-voting replaces your earlier vote rather than stacking.
+
+This is the one part of the site that is not purely static — shared state has to live somewhere. It uses [Supabase](https://supabase.com)'s free tier, talking to its PostgREST endpoint with plain `fetch`, so there is still no SDK, no CDN script, and no build step. Updates arrive by polling every six seconds, paused while the tab is in the background and refreshed the moment you return to it.
+
+**Setup, about two minutes:**
+
+1. Make a free project at [supabase.com](https://supabase.com).
+2. Open the SQL editor, paste in [`supabase/schema.sql`](supabase/schema.sql), and run it. That creates three tables and their row-level security policies.
+3. In Settings → API, copy the **Project URL** and the **`anon` public** key.
+4. Put both into [`public/config.js`](public/config.js) and commit.
+
+Until step 4 is done the board panel shows a short setup note and the rest of the site behaves exactly as before — nothing else depends on Supabase.
+
+**About that key.** The anon key is designed to ship in client code; row-level security is what actually constrains it. But this repo is public, so committing the key means anyone who finds the repo can write to your boards. The tables hold only print IDs, first names, and thumbs up/down, and board IDs are 12 random characters, so the realistic worst case is a stranger scribbling on a pick list. If you would rather not have it in the repo, add the URL and key as Actions secrets and generate `config.js` at deploy time by inserting this step into `pages.yml` before the upload:
+
+```yaml
+      - name: Write Supabase config
+        run: |
+          cat > public/config.js <<EOF
+          window.GALC_SUPABASE = {
+            url: '${{ secrets.SUPABASE_URL }}',
+            anonKey: '${{ secrets.SUPABASE_ANON_KEY }}'
+          };
+          EOF
+```
+
+That keeps the key out of the repo. It is still readable in the deployed page — unavoidable for any client-side app — so it is a real improvement, not a secret.
+
 ## Layout
 
 ```
@@ -49,7 +79,10 @@ scripts/fetch-data.mjs      the pipeline: API -> public/data/collection.json
 scripts/lib/dimensions.mjs  the dimensions parser (the interesting part)
 scripts/lib/jpeg.mjs        reads intrinsic size from a JPEG's SOF marker
 scripts/dimensions.test.mjs node:test coverage for every real-world format
-public/                     the entire site: one HTML, one CSS, one JS module
+public/                     the entire site: one HTML, one CSS, two JS modules
+public/boards.js            shared group boards (the only networked feature)
+public/config.js            your Supabase URL + anon key, or nulls to disable
+supabase/schema.sql         run once in the Supabase SQL editor
 data/aspect-cache.json      image id -> [w, h], committed so builds stay cheap
 .github/workflows/          daily refresh, commits the snapshot if it changed
 ```
