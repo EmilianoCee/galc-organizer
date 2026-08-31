@@ -351,6 +351,11 @@ function render() {
 }
 
 function renderMore() {
+  // The board view renders its own complete list and leaves `rendered` at 0,
+  // so the infinite-scroll observer would otherwise keep appending filtered
+  // grid cards underneath it -- full-width, since .results.board is a column.
+  if (state.view === 'board') return;
+
   const slice = filtered.slice(rendered, rendered + CHUNK);
   const target = state.view === 'table' ? els.results.querySelector('tbody') : els.results;
   const frag = document.createDocumentFragment();
