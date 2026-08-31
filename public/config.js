@@ -11,6 +11,6 @@
 // see the README if you would rather inject it from an Actions secret instead.
 
 window.GALC_SUPABASE = {
-  url: null, // e.g. 'https://abcdefghijklm.supabase.co'
-  anonKey: null // the long 'anon public' key from Settings -> API
+  url: 'https://lwbvudjhkwsnstdqmsja.supabase.co', // e.g. 'https://abcdefghijklm.supabase.co'
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx3YnZ1ZGpoa3dzbnN0ZHFtc2phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNTI5NzIsImV4cCI6MjEwMzcyODk3Mn0.qFZIAUhb78pJstvPD-Jev5xVQDI6OC3R-1sznE28gl8' // the long 'anon public' key from Settings -> API
 };
