@@ -58,9 +58,13 @@ No dependencies and no build step. The spec suggested Next.js or Astro; with ~90
 
 ## Deploying
 
-Any static host works — point it at `public/`. For GitHub Pages, serve the `public/` directory from the repo's Pages settings.
+Live at **<https://emilianocee.github.io/galc-organizer/>**.
 
-Two things keep it unlisted, per the spec: `public/robots.txt` disallows everything, and `index.html` carries `noindex, nofollow, noarchive, noimageindex`. Neither is access control — anyone with the link can open it, so treat the URL as the only gate and don't post it publicly.
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) deploys `public/` on every push to `main`, and again whenever the daily refresh commits a new snapshot. It runs `npm test` and checks the snapshot is non-empty first, so a broken parser or a failed pull will not go live. `actions/configure-pages` turns Pages on by itself, so there is no switch to flip in Settings.
+
+Any other static host works too — just point it at `public/`.
+
+Two things keep it unlisted, per the spec: `public/robots.txt` disallows everything, and `index.html` carries `noindex, nofollow, noarchive, noimageindex`. Neither is access control. A Pages site is publicly reachable by anyone with the URL, and this repo is public, so the URL is guessable from the repo name — treat it as unlisted, not private, and don't put anything on it you would not want a stranger to read.
 
 ## Images and rights
 

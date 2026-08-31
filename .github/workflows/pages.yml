@@ -1,0 +1,54 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Pushes made by the refresh workflow use GITHUB_TOKEN, and GitHub suppresses
+  # workflow triggers from those, so a fresh snapshot has to redeploy explicitly.
+  workflow_run:
+    workflows: ['Refresh collection snapshot']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; let a newer commit supersede an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify the dimension parser still holds
+        run: npm test
+
+      - name: Fail early if the snapshot is missing
+        run: test -s public/data/collection.json
+
+      # `enablement: true` turns Pages on for the repo the first time this runs,
+      # so there is no manual switch to flip in Settings.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
