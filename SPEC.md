@@ -21,6 +21,7 @@ UC Berkeley's [Graphic Arts Loan Collection](https://www.lib.berkeley.edu/visit/
 | Width/height matching | Range sliders (min/max), sorted numerically — no fuzzy grouping/clustering needed |
 | Checked-out status | Best-effort snapshot from `circulation`, labeled with a "data as of [last sync]" timestamp — not claimed real-time |
 | Saved/wishlist picks | Browser `localStorage`, per-device, no accounts, no backend |
+| Group picks *(added later)* | Shared **boards** on Supabase's free tier: anyone with the link nominates and votes, ranked by score. Supersedes "no backend" for this one feature; private saved picks stay local-only. |
 | Checkout itself | Out of scope — link out to the official GALC page instead |
 | Visibility | Unlisted: reachable by direct link, `noindex` + `robots.txt` disallow, not promoted/linked publicly |
 
@@ -44,5 +45,6 @@ UC Berkeley's [Graphic Arts Loan Collection](https://www.lib.berkeley.edu/visit/
 ## Explicitly out of scope
 
 - Checkout/reservation flow
-- User accounts / cross-device sync of saved lists
+- User accounts (boards identify people by a name they type, not a login)
+- Cross-device sync of *private* saved picks — still `localStorage` only
 - Real-time availability guarantees

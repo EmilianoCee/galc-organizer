@@ -25,6 +25,8 @@
   </div>
 </header>
 
+<div id="board-bar" class="board-bar" hidden></div>
+
 <div class="layout">
 
   <aside class="sidebar" id="sidebar">
@@ -80,6 +82,11 @@
 
     <div id="facets"></div>
 
+    <section class="panel" id="board-panel">
+      <h2>Group board</h2>
+      <div id="board-panel-body"></div>
+    </section>
+
     <section class="panel">
       <button id="reset" class="ghost-button wide" type="button">Reset all filters</button>
     </section>
@@ -109,6 +116,7 @@
           <button type="button" data-view="grid" class="is-active">Grid</button>
           <button type="button" data-view="table">Table</button>
           <button type="button" data-view="wall">Wall</button>
+          <button type="button" data-view="board" id="view-board" hidden>Board</button>
         </div>
       </div>
     </div>
@@ -136,6 +144,7 @@
   </p>
 </footer>
 
+<script src="config.js"></script>
 <script src="app.js" type="module"></script>
 </body>
 </html>
