@@ -48,29 +48,20 @@ A board is a shared shortlist several people nominate to and vote on. One person
 
 This is the one part of the site that is not purely static — shared state has to live somewhere. It uses [Supabase](https://supabase.com)'s free tier, talking to its PostgREST endpoint with plain `fetch`, so there is still no SDK, no CDN script, and no build step. Updates arrive by polling every six seconds, paused while the tab is in the background and refreshed the moment you return to it.
 
-**Setup, about two minutes:**
+**Setup:**
 
 1. Make a free project at [supabase.com](https://supabase.com).
-2. Open the SQL editor, paste in [`supabase/schema.sql`](supabase/schema.sql), and run it. That creates three tables and their row-level security policies.
+2. Open the SQL editor, paste in [`supabase/schema.sql`](supabase/schema.sql), and run it. That creates three tables and their access policies. It is safe to re-run whenever that file changes.
 3. In Settings → API, copy the **Project URL** and the **`anon` public** key.
-4. Put both into [`public/config.js`](public/config.js) and commit.
+4. In the repo's Settings → Secrets and variables → Actions, add them as `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 
-Until step 4 is done the board panel shows a short setup note and the rest of the site behaves exactly as before — nothing else depends on Supabase.
+The deploy workflow writes [`public/config.js`](public/config.js) from those secrets at build time, so the credentials are not in version control. With no secrets set the board panel shows a setup note and the rest of the site is unaffected.
 
-**About that key.** The anon key is designed to ship in client code; row-level security is what actually constrains it. But this repo is public, so committing the key means anyone who finds the repo can write to your boards. The tables hold only print IDs, first names, and thumbs up/down, and board IDs are 12 random characters, so the realistic worst case is a stranger scribbling on a pick list. If you would rather not have it in the repo, add the URL and key as Actions secrets and generate `config.js` at deploy time by inserting this step into `pages.yml` before the upload:
+For local development, fill the two values into `public/config.js` by hand and leave that edit uncommitted.
 
-```yaml
-      - name: Write Supabase config
-        run: |
-          cat > public/config.js <<EOF
-          window.GALC_SUPABASE = {
-            url: '${{ secrets.SUPABASE_URL }}',
-            anonKey: '${{ secrets.SUPABASE_ANON_KEY }}'
-          };
-          EOF
-```
+Worth being clear about what this does and does not buy: keeping the key out of the repo is tidiness, not secrecy. Any client-side app has to hand its key to the browser, so the deployed `config.js` still contains it and anyone who opens the site can read it. What actually limits the key is the policy set in `schema.sql`, which grants only the operations the app performs — boards can be created and read but never renamed or deleted, and the tables hold nothing beyond print IDs, chosen display names, and up/down votes.
 
-That keeps the key out of the repo. It is still readable in the deployed page — unavoidable for any client-side app — so it is a real improvement, not a secret.
+**A note on caching.** GitHub Pages serves with `cache-control: max-age=600`, so after changing the secrets your browser may keep the previous `config.js` for up to ten minutes. A hard refresh (Cmd/Ctrl+Shift+R) skips the wait.
 
 ## Layout
 
@@ -81,7 +72,7 @@ scripts/lib/jpeg.mjs        reads intrinsic size from a JPEG's SOF marker
 scripts/dimensions.test.mjs node:test coverage for every real-world format
 public/                     the entire site: one HTML, one CSS, two JS modules
 public/boards.js            shared group boards (the only networked feature)
-public/config.js            your Supabase URL + anon key, or nulls to disable
+public/config.js            Supabase credentials, injected at deploy from secrets
 supabase/schema.sql         run once in the Supabase SQL editor
 data/aspect-cache.json      image id -> [w, h], committed so builds stay cheap
 .github/workflows/          daily refresh, commits the snapshot if it changed

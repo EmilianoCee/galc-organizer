@@ -46,6 +46,21 @@ jobs:
         with:
           enablement: true
 
+      # Credentials come from the repository's secret store, not the repo, and
+      # are written into the build just before it is packaged.
+      - name: Write Supabase config
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+            printf "window.GALC_SUPABASE = {\n  url: '%s',\n  anonKey: '%s'\n};\n" \
+              "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > public/config.js
+            echo "Wrote Supabase config from secrets."
+          else
+            echo "No Supabase secrets set - group boards will stay switched off."
+          fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

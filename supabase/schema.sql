@@ -1,12 +1,11 @@
 -- GALC Explorer group boards.
--- Paste this whole file into the Supabase SQL editor and run it once.
+-- Paste this whole file into the Supabase SQL editor and run it. It is safe to
+-- re-run: tables are created only if missing, and policies are replaced.
 --
--- Security model, stated plainly: this site is static, so the only credential
--- it can hold is the public anon key. Anyone who has that key can read and
--- write these three tables. That is acceptable here because the tables hold
--- nothing sensitive -- print IDs, a first name, and a thumbs up or down -- and
--- because board IDs are random enough not to be guessed. It is NOT a model to
--- copy for anything private.
+-- A static site has no server to keep a secret in, so the page carries the
+-- public anon key and these policies are what actually bound what it can do.
+-- They are scoped to exactly the operations the app performs, and nothing here
+-- exposes anything beyond print IDs, chosen display names, and up/down votes.
 
 create table if not exists boards (
   id          text primary key,
@@ -40,15 +39,37 @@ alter table boards      enable row level security;
 alter table nominations enable row level security;
 alter table votes       enable row level security;
 
--- Anonymous full access, scoped to these three tables only.
-do $$
-declare
-  t text;
-begin
-  foreach t in array array['boards', 'nominations', 'votes'] loop
-    execute format('drop policy if exists anon_all on %I', t);
-    execute format(
-      'create policy anon_all on %I for all to anon using (true) with check (true)', t
-    );
-  end loop;
-end $$;
+-- Clear anything from an earlier run of this file.
+drop policy if exists anon_all     on boards;
+drop policy if exists anon_all     on nominations;
+drop policy if exists anon_all     on votes;
+drop policy if exists anon_read    on boards;
+drop policy if exists anon_create  on boards;
+drop policy if exists anon_read    on nominations;
+drop policy if exists anon_create  on nominations;
+drop policy if exists anon_update  on nominations;
+drop policy if exists anon_remove  on nominations;
+drop policy if exists anon_read    on votes;
+drop policy if exists anon_create  on votes;
+drop policy if exists anon_update  on votes;
+drop policy if exists anon_remove  on votes;
+
+-- Boards: anyone with the link can read one and anyone can start one, but the
+-- app never renames or deletes a board, so those rights are simply not granted.
+-- That keeps an existing board from being wiped or retitled by a passer-by.
+create policy anon_read   on boards for select to anon using (true);
+create policy anon_create on boards for insert to anon with check (true);
+
+-- Nominations: added, listed, and withdrawn from the board view. Update is
+-- needed because adding a print is an upsert on (board_id, item_id).
+create policy anon_read   on nominations for select to anon using (true);
+create policy anon_create on nominations for insert to anon with check (true);
+create policy anon_update on nominations for update to anon using (true) with check (true);
+create policy anon_remove on nominations for delete to anon using (true);
+
+-- Votes: same shape. Re-voting upserts on (board_id, item_id, voter_id), and
+-- clearing your vote deletes that row.
+create policy anon_read   on votes for select to anon using (true);
+create policy anon_create on votes for insert to anon with check (true);
+create policy anon_update on votes for update to anon using (true) with check (true);
+create policy anon_remove on votes for delete to anon using (true);
